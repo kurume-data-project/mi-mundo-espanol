@@ -387,7 +387,7 @@ def show_mindmap(question):
     </div>
     """
 
-    st.markdown(content, unsafe_allow_html=True)
+　　　st.html(content)
 
 
 # =====================================
