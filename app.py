@@ -10,7 +10,7 @@ st.set_page_config(
 )
 
 # =====================================
-# 問題・マインドマップデータ
+# 問題データ
 # =====================================
 
 QUESTIONS = [
@@ -219,85 +219,91 @@ QUESTIONS = [
 
 
 # =====================================
-# マインドマップ表示
+# マインドマップ
 # =====================================
 
 def show_mindmap(question):
 
-    st.markdown("""
+    content = """
     <style>
     .mindmap {
         background: #FFFDF7;
-        padding: 18px;
-        border-radius: 20px;
+        padding: 14px;
+        border-radius: 18px;
         border: 1px solid #E8DFC9;
         color: #344054;
+        font-family: sans-serif;
+        box-sizing: border-box;
+        width: 100%;
     }
 
     .mind-center {
         background: #245C83;
         color: white;
         border-radius: 18px;
-        padding: 20px 10px;
+        padding: 18px 8px;
         text-align: center;
-        margin: 0 auto;
-        max-width: 270px;
+        margin: auto;
+        max-width: 260px;
         box-shadow: 0 4px 10px #00000018;
     }
 
     .mind-center .emoji {
-        font-size: 48px;
+        font-size: 42px;
     }
 
     .mind-center .title {
-        font-size: 21px;
+        font-size: 20px;
         font-weight: bold;
+    }
+
+    .mind-center .subtitle {
+        font-size: 13px;
+        margin-top: 5px;
     }
 
     .mind-connector {
         width: 3px;
-        height: 28px;
+        height: 25px;
         background: #B9B4A7;
         margin: auto;
     }
 
     .mind-branches {
         display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 12px;
-        position: relative;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
     }
 
     .mind-card {
         background: white;
-        border-radius: 14px;
-        padding: 12px;
+        border-radius: 13px;
+        padding: 10px;
         border: 1px solid #E6E2D8;
         border-top: 5px solid var(--branch-color);
-        box-shadow: 0 2px 7px #0000000D;
         min-width: 0;
+        box-sizing: border-box;
+    }
+
+    .mind-category-icon {
+        font-size: 26px;
     }
 
     .mind-category {
         font-size: 13px;
         font-weight: bold;
-        color: #344054;
-        margin-bottom: 3px;
-    }
-
-    .mind-category-icon {
-        font-size: 27px;
+        overflow-wrap: anywhere;
     }
 
     .mind-category-ja {
         font-size: 11px;
-        color: #777777;
-        margin-bottom: 10px;
+        color: #777;
+        margin-bottom: 8px;
     }
 
     .mind-word {
-        border-left: 2px solid var(--branch-color);
-        padding: 4px 5px;
+        border-left: 3px solid var(--branch-color);
+        padding: 5px 6px;
         margin: 5px 0;
         background: #FAFAF8;
         border-radius: 4px;
@@ -312,48 +318,37 @@ def show_mindmap(question):
 
     .mind-ja {
         font-size: 11px;
-        color: #777777;
+        color: #777;
+        overflow-wrap: anywhere;
     }
 
     .mind-footer {
         text-align: center;
-        color: #777777;
+        color: #777;
         font-size: 12px;
         padding-top: 15px;
     }
-
-    @media (max-width: 480px) {
-        .mindmap {
-            padding: 10px;
-        }
-        .mind-branches {
-            gap: 8px;
-        }
-        .mind-card {
-            padding: 8px;
-        }
-        .mind-es {
-            font-size: 12px;
-        }
-    }
     </style>
-    """, unsafe_allow_html=True)
+    """
 
     title = html.escape(question["title"])
     icon = html.escape(question["icon"])
 
-    content = f"""
+    content += f"""
     <div class="mindmap">
       <div class="mind-center">
         <div class="emoji">{icon}</div>
         <div class="title">{title}</div>
-        <div>Mi vocabulario</div>
+        <div class="subtitle">Mi vocabulario</div>
       </div>
+
       <div class="mind-connector"></div>
+
       <div class="mind-branches">
     """
 
     for category in question["mindmap"]:
+
         color = html.escape(category["color"])
         cat_icon = html.escape(category["icon"])
         cat_name = html.escape(category["category"])
@@ -367,6 +362,7 @@ def show_mindmap(question):
         """
 
         for es, ja in category["words"]:
+
             es = html.escape(es)
             ja = html.escape(ja)
 
@@ -387,7 +383,8 @@ def show_mindmap(question):
     </div>
     """
 
-　　　st.html(content)
+    # HTMLを図として表示する
+    st.html(content)
 
 
 # =====================================
@@ -400,12 +397,14 @@ if "q_index" not in st.session_state:
     st.session_state.score = 0
     st.session_state.answered = False
     st.session_state.selected = []
-    st.session_state.order = random.sample(range(5), 5)
     st.session_state.is_correct = False
+    st.session_state.order = random.sample(range(5), 5)
 
 
 def next_question():
+
     previous = st.session_state.q_index
+
     candidates = [
         i for i in range(len(QUESTIONS))
         if i != previous
@@ -450,6 +449,7 @@ if not st.session_state.answered:
         choices = {}
 
         for i in st.session_state.order:
+
             word = q["words"][i]
 
             choices[i] = st.checkbox(
@@ -463,22 +463,28 @@ if not st.session_state.answered:
         )
 
     if submitted:
+
         selected = [
-            i for i, value in choices.items() if value
+            i for i, value in choices.items()
+            if value
         ]
 
         if len(selected) != 3:
             st.warning("3つ選択してください。")
+
         else:
+
             correct = [
                 i for i, word in enumerate(q["words"])
                 if word["correct"]
             ]
 
             st.session_state.selected = selected
+
             st.session_state.is_correct = (
                 set(selected) == set(correct)
             )
+
             st.session_state.answered = True
 
             if st.session_state.is_correct:
@@ -488,7 +494,7 @@ if not st.session_state.answered:
 
 
 # =====================================
-# 答え合わせ・マインドマップ
+# 答え合わせ
 # =====================================
 
 if st.session_state.answered:
@@ -502,15 +508,24 @@ if st.session_state.answered:
         st.warning("正解を確認して、覚えましょう！")
 
     for i in st.session_state.order:
+
         word = q["words"][i]
 
         if word["correct"]:
-            st.success(f"✓ {word['es']} ＝ {word['ja']}")
+            st.success(
+                f"✓ {word['es']} ＝ {word['ja']}"
+            )
         else:
-            st.write(f"✕ {word['es']} ＝ {word['ja']}")
+            st.write(
+                f"✕ {word['es']} ＝ {word['ja']}"
+            )
+
+
+    # =================================
+    # マインドマップ
+    # =================================
 
     st.divider()
-
     st.header("🌍 イラスト型マインドマップ")
 
     st.write(
@@ -529,8 +544,12 @@ if st.session_state.answered:
         f"今回の追加語彙は {total_words} 語です！"
     )
 
-    st.divider()
 
+    # =================================
+    # 書き写し復習
+    # =================================
+
+    st.divider()
     st.header("✍️ 書き写して覚えよう")
 
     st.markdown("""
@@ -548,5 +567,11 @@ if st.session_state.answered:
         st.rerun()
 
 
+# =====================================
+# フッター
+# =====================================
+
 st.divider()
-st.caption("Mi Mundo Español | Aprende español cada día")
+st.caption(
+    "Mi Mundo Español | Aprende español cada día 🇪🇸"
+)
