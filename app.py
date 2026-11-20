@@ -1,11 +1,11 @@
 
-import html
 import random
 import streamlit as st
-
+from collections import defaultdict
 
 # ==========================================
 # Mi Mundo Español
+# 写真を見て3つの単語を選ぶ自動出題アプリ
 # ==========================================
 
 st.set_page_config(
@@ -15,474 +15,245 @@ st.set_page_config(
 )
 
 # ==========================================
-# 問題・語彙データ
-# 各問題：6カテゴリー × 5語 = 30語
+# 問題データ
+# 新しい場面・単語を追加するだけで問題数が増える
 # ==========================================
 
-QUESTIONS = [
+SCENES = [
     {
+        "id": "cafe",
         "title": "En una cafetería",
+        "ja": "カフェ",
         "level": "A1",
-        "icon": "☕",
         "photo": "https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=1200",
         "words": [
-            ("la mesa", "テーブル", True),
-            ("la silla", "椅子", True),
-            ("el café", "コーヒー", True),
-            ("el avión", "飛行機", False),
-            ("el hospital", "病院", False),
-        ],
-        "categories": [
-            ("Comida y bebida", "食べ物・飲み物", "🥐", "#45A7D5", [
-                ("el té", "お茶"),
-                ("la leche", "牛乳"),
-                ("el azúcar", "砂糖"),
-                ("el agua", "水"),
-                ("el zumo", "ジュース"),
-            ]),
-            ("Personas", "人", "🧑‍🍳", "#E6B93F", [
-                ("el camarero", "ウェイター"),
-                ("la camarera", "ウェイトレス"),
-                ("el cliente", "お客さん"),
-                ("el cocinero", "料理人"),
-                ("el amigo", "友人"),
-            ]),
-            ("Utensilios", "食器・道具", "🍽️", "#65B879", [
-                ("la taza", "カップ"),
-                ("el vaso", "グラス"),
-                ("la cuchara", "スプーン"),
-                ("el tenedor", "フォーク"),
-                ("el plato", "皿"),
-            ]),
-            ("Lugares", "場所", "🏠", "#D77BB3", [
-                ("la cafetería", "カフェ"),
-                ("la terraza", "テラス"),
-                ("la cocina", "台所"),
-                ("el restaurante", "レストラン"),
-                ("el baño", "トイレ"),
-            ]),
-            ("Acciones", "行動", "💬", "#A47ACD", [
-                ("pedir", "注文する"),
-                ("pagar", "支払う"),
-                ("desayunar", "朝食をとる"),
-                ("comer", "食べる"),
-                ("beber", "飲む"),
-            ]),
-            ("Otras palabras", "その他", "🧾", "#E58B55", [
-                ("la cuenta", "お会計"),
-                ("el menú", "メニュー"),
-                ("el precio", "価格"),
-                ("la propina", "チップ"),
-                ("la mañana", "朝"),
-            ]),
+            ("la mesa", "テーブル", "Muebles"),
+            ("la silla", "椅子", "Muebles"),
+            ("el café", "コーヒー", "Comida y bebida"),
+            ("la taza", "カップ", "Utensilios"),
+            ("el vaso", "グラス", "Utensilios"),
+            ("el camarero", "ウェイター", "Personas"),
+            ("la camarera", "ウェイトレス", "Personas"),
+            ("la cuenta", "お会計", "Compras"),
+            ("el menú", "メニュー", "Compras"),
+            ("el azúcar", "砂糖", "Comida y bebida"),
+            ("la leche", "牛乳", "Comida y bebida"),
+            ("la terraza", "テラス", "Lugares"),
+            ("el restaurante", "レストラン", "Lugares"),
+            ("pedir", "注文する", "Acciones"),
+            ("pagar", "支払う", "Acciones"),
         ],
     },
     {
+        "id": "beach",
         "title": "En la playa",
+        "ja": "ビーチ",
         "level": "A1",
-        "icon": "🏖️",
         "photo": "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1200",
         "words": [
-            ("el mar", "海", True),
-            ("la playa", "ビーチ", True),
-            ("el sol", "太陽", True),
-            ("el tren", "電車", False),
-            ("la oficina", "オフィス", False),
-        ],
-        "categories": [
-            ("Animales marinos", "海の生き物", "🐬", "#45A7D5", [
-                ("el pez", "魚"),
-                ("el delfín", "イルカ"),
-                ("la tortuga", "カメ"),
-                ("el tiburón", "サメ"),
-                ("la medusa", "クラゲ"),
-            ]),
-            ("Objetos", "持ち物", "🕶️", "#E6B93F", [
-                ("la toalla", "タオル"),
-                ("el bañador", "水着"),
-                ("las gafas de sol", "サングラス"),
-                ("la sombrilla", "パラソル"),
-                ("la crema solar", "日焼け止め"),
-            ]),
-            ("Naturaleza", "自然", "🌴", "#65B879", [
-                ("la arena", "砂"),
-                ("la ola", "波"),
-                ("el viento", "風"),
-                ("la nube", "雲"),
-                ("la palmera", "ヤシの木"),
-            ]),
-            ("Tiempo", "天気", "🌤️", "#D77BB3", [
-                ("el calor", "暑さ"),
-                ("el frío", "寒さ"),
-                ("el cielo", "空"),
-                ("la lluvia", "雨"),
-                ("la temperatura", "気温"),
-            ]),
-            ("Acciones", "行動", "🏊", "#A47ACD", [
-                ("nadar", "泳ぐ"),
-                ("bucear", "潜る"),
-                ("tomar el sol", "日光浴する"),
-                ("jugar", "遊ぶ"),
-                ("descansar", "休む"),
-            ]),
-            ("Lugares y otros", "場所・その他", "⛱️", "#E58B55", [
-                ("la piscina", "プール"),
-                ("el paseo", "遊歩道"),
-                ("el puerto", "港"),
-                ("la isla", "島"),
-                ("las vacaciones", "休暇"),
-            ]),
+            ("el mar", "海", "Naturaleza"),
+            ("la arena", "砂", "Naturaleza"),
+            ("la ola", "波", "Naturaleza"),
+            ("el sol", "太陽", "Tiempo"),
+            ("el cielo", "空", "Tiempo"),
+            ("la nube", "雲", "Tiempo"),
+            ("la toalla", "タオル", "Objetos"),
+            ("el bañador", "水着", "Objetos"),
+            ("la sombrilla", "パラソル", "Objetos"),
+            ("las gafas de sol", "サングラス", "Objetos"),
+            ("el pez", "魚", "Animales"),
+            ("el delfín", "イルカ", "Animales"),
+            ("nadar", "泳ぐ", "Acciones"),
+            ("descansar", "休む", "Acciones"),
+            ("tomar el sol", "日光浴する", "Acciones"),
         ],
     },
     {
+        "id": "market",
         "title": "En el mercado",
-        "level": "A2",
-        "icon": "🛒",
+        "ja": "市場",
+        "level": "A1",
         "photo": "https://images.unsplash.com/photo-1542838132-92c53300491e?w=1200",
         "words": [
-            ("la fruta", "果物", True),
-            ("la verdura", "野菜", True),
-            ("el vendedor", "販売員", True),
-            ("el ordenador", "パソコン", False),
-            ("el aeropuerto", "空港", False),
+            ("la fruta", "果物", "Alimentos"),
+            ("la verdura", "野菜", "Alimentos"),
+            ("la manzana", "りんご", "Frutas"),
+            ("el plátano", "バナナ", "Frutas"),
+            ("la naranja", "オレンジ", "Frutas"),
+            ("la zanahoria", "にんじん", "Verduras"),
+            ("el tomate", "トマト", "Verduras"),
+            ("la cebolla", "たまねぎ", "Verduras"),
+            ("el vendedor", "販売員", "Personas"),
+            ("el cliente", "お客さん", "Personas"),
+            ("el precio", "価格", "Compras"),
+            ("el dinero", "お金", "Compras"),
+            ("la bolsa", "袋", "Objetos"),
+            ("comprar", "買う", "Acciones"),
+            ("vender", "売る", "Acciones"),
         ],
-        "categories": [
-            ("Frutas", "果物", "🍎", "#45A7D5", [
-                ("la manzana", "りんご"),
-                ("el plátano", "バナナ"),
-                ("la naranja", "オレンジ"),
-                ("la fresa", "いちご"),
-                ("la uva", "ぶどう"),
-            ]),
-            ("Verduras", "野菜", "🥕", "#E6B93F", [
-                ("la cebolla", "たまねぎ"),
-                ("la zanahoria", "にんじん"),
-                ("el tomate", "トマト"),
-                ("la patata", "じゃがいも"),
-                ("el pepino", "きゅうり"),
-            ]),
-            ("Otros alimentos", "その他の食べ物", "🧀", "#65B879", [
-                ("el queso", "チーズ"),
-                ("el pan", "パン"),
-                ("el arroz", "米"),
-                ("el huevo", "卵"),
-                ("la carne", "肉"),
-            ]),
-            ("Compras", "買い物", "🛍️", "#D77BB3", [
-                ("el precio", "価格"),
-                ("el dinero", "お金"),
-                ("la bolsa", "袋"),
-                ("el kilo", "キログラム"),
-                ("el descuento", "割引"),
-            ]),
-            ("Acciones", "行動", "🤝", "#A47ACD", [
-                ("comprar", "買う"),
-                ("vender", "売る"),
-                ("elegir", "選ぶ"),
-                ("pesar", "重さを量る"),
-                ("pagar", "支払う"),
-            ]),
-            ("Personas y lugares", "人・場所", "🏪", "#E58B55", [
-                ("el vendedor", "販売員"),
-                ("el cliente", "お客さん"),
-                ("el mercado", "市場"),
-                ("la tienda", "店"),
-                ("el puesto", "売り場"),
-            ]),
+    },
+    {
+        "id": "city",
+        "title": "En la ciudad",
+        "ja": "街",
+        "level": "A1",
+        "photo": "https://images.unsplash.com/photo-1519608487953-e999c86e7455?w=1200",
+        "words": [
+            ("la calle", "通り", "Lugares"),
+            ("el edificio", "建物", "Lugares"),
+            ("la plaza", "広場", "Lugares"),
+            ("el parque", "公園", "Lugares"),
+            ("la tienda", "店", "Compras"),
+            ("el banco", "銀行", "Lugares"),
+            ("el semáforo", "信号", "Transporte"),
+            ("el coche", "車", "Transporte"),
+            ("el autobús", "バス", "Transporte"),
+            ("la bicicleta", "自転車", "Transporte"),
+            ("el árbol", "木", "Naturaleza"),
+            ("la farola", "街灯", "Objetos"),
+            ("caminar", "歩く", "Acciones"),
+            ("cruzar", "渡る", "Acciones"),
+            ("buscar", "探す", "Acciones"),
+        ],
+    },
+    {
+        "id": "home",
+        "title": "En casa",
+        "ja": "家",
+        "level": "A1",
+        "photo": "https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?w=1200",
+        "words": [
+            ("la casa", "家", "Lugares"),
+            ("la habitación", "部屋", "Lugares"),
+            ("la cocina", "台所", "Lugares"),
+            ("el baño", "浴室・トイレ", "Lugares"),
+            ("la cama", "ベッド", "Muebles"),
+            ("el sofá", "ソファ", "Muebles"),
+            ("la mesa", "テーブル", "Muebles"),
+            ("la puerta", "ドア", "Objetos"),
+            ("la ventana", "窓", "Objetos"),
+            ("la lámpara", "ランプ", "Objetos"),
+            ("el frigorífico", "冷蔵庫", "Electrodomésticos"),
+            ("la televisión", "テレビ", "Electrodomésticos"),
+            ("cocinar", "料理する", "Acciones"),
+            ("limpiar", "掃除する", "Acciones"),
+            ("dormir", "眠る", "Acciones"),
+        ],
+    },
+    {
+        "id": "school",
+        "title": "En la escuela",
+        "ja": "学校",
+        "level": "A1",
+        "photo": "https://images.unsplash.com/photo-1509062522246-3755977927d7?w=1200",
+        "words": [
+            ("la escuela", "学校", "Lugares"),
+            ("el aula", "教室", "Lugares"),
+            ("la biblioteca", "図書館", "Lugares"),
+            ("el profesor", "先生（男性）", "Personas"),
+            ("la profesora", "先生（女性）", "Personas"),
+            ("el estudiante", "学生", "Personas"),
+            ("el libro", "本", "Objetos"),
+            ("el cuaderno", "ノート", "Objetos"),
+            ("el lápiz", "鉛筆", "Objetos"),
+            ("el bolígrafo", "ボールペン", "Objetos"),
+            ("la mochila", "リュック", "Objetos"),
+            ("la pizarra", "黒板", "Objetos"),
+            ("estudiar", "勉強する", "Acciones"),
+            ("leer", "読む", "Acciones"),
+            ("escribir", "書く", "Acciones"),
         ],
     },
 ]
 
-
 # ==========================================
-# CSS
-# ==========================================
-
-st.markdown("""
-<style>
-    .main-title {
-        text-align: center;
-        color: #245C83;
-        font-size: 34px;
-        font-weight: 800;
-        margin-bottom: 0;
-    }
-
-    .sub-title {
-        text-align: center;
-        color: #777777;
-        margin-top: 0;
-        margin-bottom: 20px;
-    }
-
-    .instruction {
-        background: #EDF5FC;
-        border-left: 5px solid #398BC5;
-        padding: 14px;
-        border-radius: 8px;
-        margin: 12px 0;
-    }
-
-    .mindmap {
-        background: #FFFDF8;
-        padding: 14px;
-        border-radius: 18px;
-        border: 1px solid #E5DFD2;
-        font-family: sans-serif;
-        color: #24344D;
-        width: 100%;
-        box-sizing: border-box;
-    }
-
-    .mind-center {
-        background: #315D80;
-        color: white;
-        border-radius: 22px;
-        padding: 15px;
-        text-align: center;
-        max-width: 520px;
-        margin: 0 auto;
-        box-shadow: 0 4px 12px #00000020;
-    }
-
-    .mind-center img {
-        width: 100%;
-        height: 190px;
-        object-fit: cover;
-        border-radius: 13px;
-        display: block;
-        margin-bottom: 10px;
-    }
-
-    .mind-center .emoji {
-        font-size: 30px;
-    }
-
-    .mind-center .topic {
-        font-size: 22px;
-        font-weight: bold;
-    }
-
-    .mind-center .translation {
-        font-size: 14px;
-        margin-top: 4px;
-    }
-
-    .mind-connector {
-        width: 4px;
-        height: 28px;
-        background: #A8B5C1;
-        margin: 0 auto;
-    }
-
-    .branch-heading {
-        text-align: center;
-        color: #64748B;
-        font-size: 12px;
-        margin-bottom: 10px;
-    }
-
-    .branch-grid {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 12px;
-    }
-
-    .branch-card {
-        background: white;
-        border: 1px solid #E7E4DC;
-        border-top: 6px solid var(--branch-color);
-        border-radius: 13px;
-        padding: 12px;
-        min-width: 0;
-        box-sizing: border-box;
-        box-shadow: 0 2px 5px #0000000A;
-    }
-
-    .branch-icon {
-        font-size: 30px;
-        text-align: center;
-    }
-
-    .branch-name {
-        font-size: 15px;
-        font-weight: bold;
-        text-align: center;
-        overflow-wrap: anywhere;
-    }
-
-    .branch-ja {
-        font-size: 12px;
-        text-align: center;
-        color: #777777;
-        margin-bottom: 8px;
-    }
-
-    .word-item {
-        border-left: 3px solid var(--branch-color);
-        background: #FAFAF8;
-        border-radius: 5px;
-        padding: 6px;
-        margin-top: 6px;
-        overflow-wrap: anywhere;
-    }
-
-    .word-es {
-        font-size: 13px;
-        font-weight: bold;
-        color: #234C72;
-    }
-
-    .word-ja {
-        font-size: 12px;
-        color: #737373;
-    }
-
-    .mind-footer {
-        text-align: center;
-        font-size: 12px;
-        color: #777777;
-        padding-top: 15px;
-    }
-
-    @media (max-width: 650px) {
-        .branch-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 8px;
-        }
-
-        .branch-card {
-            padding: 9px;
-        }
-
-        .branch-name {
-            font-size: 13px;
-        }
-
-        .word-es {
-            font-size: 12px;
-        }
-
-        .word-ja {
-            font-size: 11px;
-        }
-
-        .mind-center img {
-            height: 150px;
-        }
-    }
-
-    @media (max-width: 360px) {
-        .branch-grid {
-            grid-template-columns: 1fr;
-        }
-    }
-</style>
-""", unsafe_allow_html=True)
-
-
-# ==========================================
-# マインドマップ生成
+# セッション状態
 # ==========================================
 
-def show_mindmap(question):
-
-    safe_title = html.escape(question["title"])
-    safe_icon = html.escape(question["icon"])
-    safe_photo = html.escape(question["photo"], quote=True)
-
-    content = f"""
-    <div class="mindmap">
-
-        <div class="mind-center">
-            <img src="{safe_photo}" alt="テーマの写真">
-            <div class="emoji">{safe_icon}</div>
-            <div class="topic">{safe_title}</div>
-            <div class="translation">Mi mapa de vocabulario</div>
-        </div>
-
-        <div class="mind-connector"></div>
-        <div class="branch-heading">
-            関連する6つのカテゴリー・30語
-        </div>
-
-        <div class="branch-grid">
-    """
-
-    for category, category_ja, icon, color, words in question["categories"]:
-
-        content += f"""
-        <div class="branch-card"
-             style="--branch-color:{html.escape(color)}">
-
-            <div class="branch-icon">
-                {html.escape(icon)}
-            </div>
-
-            <div class="branch-name">
-                {html.escape(category)}
-            </div>
-
-            <div class="branch-ja">
-                {html.escape(category_ja)}
-            </div>
-        """
-
-        for spanish, japanese in words:
-
-            content += f"""
-            <div class="word-item">
-                <div class="word-es">
-                    {html.escape(spanish)}
-                </div>
-                <div class="word-ja">
-                    {html.escape(japanese)}
-                </div>
-            </div>
-            """
-
-        content += "</div>"
-
-    content += """
-        </div>
-        <div class="mind-footer">
-            Aprende español paso a paso 🇪🇸
-        </div>
-    </div>
-    """
-
-    st.html(content)
-
-
-# ==========================================
-# セッション管理
-# ==========================================
-
-if "question_index" not in st.session_state:
-    st.session_state.question_index = random.randrange(len(QUESTIONS))
-    st.session_state.round_id = 0
+if "score" not in st.session_state:
     st.session_state.score = 0
+
+if "total" not in st.session_state:
+    st.session_state.total = 0
+
+if "round_id" not in st.session_state:
+    st.session_state.round_id = 0
+
+if "history" not in st.session_state:
+    st.session_state.history = []
+
+if "current_question" not in st.session_state:
+    st.session_state.current_question = None
+
+if "answered" not in st.session_state:
     st.session_state.answered = False
+
+if "selected" not in st.session_state:
     st.session_state.selected = []
-    st.session_state.is_correct = False
-    st.session_state.order = random.sample(range(5), 5)
+
+
+# ==========================================
+# 自動問題生成
+# ==========================================
+
+def generate_question():
+
+    # 既出問題と重ならない組み合わせを探す
+    for _ in range(500):
+
+        scene = random.choice(SCENES)
+
+        correct_words = random.sample(
+            scene["words"], 3
+        )
+
+        other_words = [
+            word
+            for other_scene in SCENES
+            if other_scene["id"] != scene["id"]
+            for word in other_scene["words"]
+        ]
+
+        distractors = random.sample(other_words, 2)
+
+        choices = correct_words + distractors
+        random.shuffle(choices)
+
+        correct_set = tuple(
+            sorted(word[0] for word in correct_words)
+        )
+
+        signature = (
+            scene["id"],
+            correct_set,
+            tuple(sorted(word[0] for word in distractors))
+        )
+
+        if signature not in st.session_state.history:
+            st.session_state.history.append(signature)
+
+            return {
+                "scene": scene,
+                "choices": choices,
+                "correct": correct_set,
+            }
+
+    # 組み合わせが尽きた場合は履歴をリセット
+    st.session_state.history = []
+
+    return generate_question()
 
 
 def next_question():
 
-    previous = st.session_state.question_index
-
-    candidates = [
-        i for i in range(len(QUESTIONS))
-        if i != previous
-    ]
-
-    st.session_state.question_index = random.choice(candidates)
-    st.session_state.round_id += 1
-    st.session_state.order = random.sample(range(5), 5)
+    st.session_state.current_question = generate_question()
     st.session_state.answered = False
     st.session_state.selected = []
-    st.session_state.is_correct = False
+    st.session_state.round_id += 1
+
+
+if st.session_state.current_question is None:
+    next_question()
 
 
 # ==========================================
@@ -490,55 +261,76 @@ def next_question():
 # ==========================================
 
 st.markdown(
-    '<div class="main-title">🇪🇸 Mi Mundo Español</div>',
+    "<h1 style='text-align:center;color:#245C83;'>"
+    "🇪🇸 Mi Mundo Español</h1>",
     unsafe_allow_html=True
 )
 
 st.markdown(
-    '<div class="sub-title">写真からスペイン語の世界を広げよう！</div>',
+    "<p style='text-align:center;color:gray;'>"
+    "写真からスペイン語の世界を広げよう！</p>",
     unsafe_allow_html=True
 )
 
-q = QUESTIONS[st.session_state.question_index]
+col1, col2, col3 = st.columns(3)
 
-score_col, level_col, count_col = st.columns(3)
+col1.metric("正解数", st.session_state.score)
+col2.metric("回答数", st.session_state.total)
 
-score_col.metric("正解数", st.session_state.score)
-level_col.metric("レベル", q["level"])
-count_col.metric("追加語彙", "30語")
+accuracy = (
+    round(st.session_state.score / st.session_state.total * 100)
+    if st.session_state.total > 0 else 0
+)
 
-
-# ==========================================
-# 問題画面
-# ==========================================
+col3.metric("正解率", f"{accuracy}%")
 
 st.divider()
 
-st.subheader(q["title"])
-st.image(q["photo"], use_container_width=True)
+
+# ==========================================
+# 現在の問題
+# ==========================================
+
+question = st.session_state.current_question
+scene = question["scene"]
+
+st.subheader(f"📷 {scene['title']}")
+
+st.caption(
+    f"テーマ：{scene['ja']}　|　レベル：{scene['level']}"
+)
+
+st.image(
+    scene["photo"],
+    use_container_width=True
+)
+
+# ==========================================
+# 回答前
+# ==========================================
 
 if not st.session_state.answered:
 
-    st.markdown(
-        '<div class="instruction">'
-        '📘 写真に関係するスペイン語を3つ選んでください。'
-        '<br>日本語訳は答え合わせの後に表示されます。'
-        '</div>',
-        unsafe_allow_html=True
+    st.info(
+        "写真を見て、関係するスペイン語を3つ選んでください。"
+        "日本語訳は答え合わせの後に表示されます。"
     )
 
-    with st.form(key=f"quiz_{st.session_state.round_id}"):
+    with st.form(
+        key=f"answer_form_{st.session_state.round_id}"
+    ):
 
-        choices = {}
+        selected = []
 
-        for i in st.session_state.order:
+        for i, word in enumerate(question["choices"]):
 
-            spanish = q["words"][i][0]
-
-            choices[i] = st.checkbox(
-                spanish,
+            checked = st.checkbox(
+                word[0],
                 key=f"choice_{st.session_state.round_id}_{i}"
             )
+
+            if checked:
+                selected.append(word[0])
 
         submitted = st.form_submit_button(
             "答え合わせ",
@@ -547,29 +339,24 @@ if not st.session_state.answered:
 
     if submitted:
 
-        selected = [
-            i for i, value in choices.items()
-            if value
-        ]
-
         if len(selected) != 3:
+
             st.warning("3つ選択してください。")
 
         else:
 
-            correct = [
-                i for i, word in enumerate(q["words"])
-                if word[2]
-            ]
-
             st.session_state.selected = selected
+
+            st.session_state.total += 1
+
             st.session_state.is_correct = (
-                set(selected) == set(correct)
+                set(selected) == set(question["correct"])
             )
-            st.session_state.answered = True
 
             if st.session_state.is_correct:
                 st.session_state.score += 1
+
+            st.session_state.answered = True
 
             st.rerun()
 
@@ -586,34 +373,48 @@ if st.session_state.answered:
     if st.session_state.is_correct:
         st.success("¡Muy bien! 全問正解です！")
     else:
-        st.warning("正解を確認して、覚えましょう！")
+        st.warning("もう一度、正解を確認しましょう。")
 
-    st.markdown("### 5つの単語")
+    for word in question["choices"]:
 
-    for i in st.session_state.order:
+        spanish, japanese, category = word
 
-        spanish, japanese, is_correct = q["words"][i]
-
-        if is_correct:
+        if spanish in question["correct"]:
             st.success(f"✓ {spanish} ＝ {japanese}")
         else:
             st.write(f"✕ {spanish} ＝ {japanese}")
 
     # ======================================
-    # マインドマップ
+    # 関連語のマインドマップ
     # ======================================
 
     st.divider()
-    st.header("🌍 Mi mapa de vocabulario")
+    st.header("🌍 関連する単語を広げよう")
 
     st.write(
-        "写真に写っていないものも含めて、"
-        "関連する単語を6つのカテゴリーに広げました。"
+        f"「{scene['ja']}」に関連する単語を整理しました。"
+        "写真に写っていないものも覚えましょう。"
     )
 
-    show_mindmap(q)
+    grouped = defaultdict(list)
 
-    st.success("30語の新しい単語を学習できます！")
+    for spanish, japanese, category in scene["words"]:
+        grouped[category].append((spanish, japanese))
+
+    columns = st.columns(2)
+
+    for index, (category, words) in enumerate(grouped.items()):
+
+        with columns[index % 2]:
+
+            with st.container(border=True):
+
+                st.markdown(f"**📚 {category}**")
+
+                for spanish, japanese in words:
+                    st.markdown(
+                        f"- **{spanish}**　{japanese}"
+                    )
 
     # ======================================
     # 書き写し学習
@@ -623,8 +424,8 @@ if st.session_state.answered:
     st.header("✍️ 書き写して覚えよう")
 
     st.write(
-        "マインドマップを見ながら、"
-        "スペイン語をノートに書き写してみましょう。"
+        "スペイン語をノートに書き写して、"
+        "声に出して発音してみましょう。"
     )
 
     st.markdown("""
@@ -634,21 +435,17 @@ if st.session_state.answered:
     4. 声に出して発音する
     """)
 
-    with st.expander("学習した単語を一覧で確認"):
+    with st.expander("今回の単語を一覧で確認"):
 
-        for category, category_ja, icon, color, words in q["categories"]:
-
-            st.markdown(f"#### {icon} {category}（{category_ja}）")
-
-            for spanish, japanese in words:
-                st.write(f"{spanish}　—　{japanese}")
+        for spanish, japanese, category in scene["words"]:
+            st.write(f"{spanish}　—　{japanese}")
 
     st.divider()
 
     if st.button(
         "次の問題へ →",
-        use_container_width=True,
-        type="primary"
+        type="primary",
+        use_container_width=True
     ):
         next_question()
         st.rerun()
