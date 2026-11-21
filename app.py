@@ -148,17 +148,17 @@ def small_jpeg(upload):
 def mindmap_ai(jpeg, level, key):
     """写真をもとに、カテゴリー別のスペイン語学習マインドマップを作る。"""
     b64 = base64.b64encode(jpeg).decode("utf-8")
-    prompt = f"""あなたは日本人向けのスペイン語教師です。画像を観察し、レベル{level}の学習者向けに、写真を中心としたスペイン語マインドマップを作成してください。
+    prompt = f"""あなたは日本人向けのスペイン語教師です。画像を観察し、レベル{level}（A1またはA2）の学習者向けに、写真を中心としたスペイン語マインドマップを作成してください。A1では最も基本的な語彙と短い現在形の文を使い、A2では日常生活で使う少し幅広い語彙と簡単な表現を使ってください。B1以上の難しい語彙・文法は使わないでください。
 画像に実際に写っているものを中心に、関連する場所・人・物・食べ物・自然・動作・会話表現も含めてください。見えない物を写っていると断定しないでください。
 JSONだけを返し、Markdownや説明文は付けないでください。
 形式:
 {{"scene_es":"写真の場面を表す自然なスペイン語","scene_ja":"日本語のテーマ名","summary":"写真の短い説明","categories":[{{"name":"カテゴリー名","words":[{{"es":"スペイン語（名詞は定冠詞付き）","ja":"日本語訳","example_es":"短い例文","example_ja":"例文の日本語訳"}}]}}]}}
-カテゴリーは4〜6個、各カテゴリーの単語は3〜5個。重複を避け、訳は自然で正確に。例文は短く{level}程度にしてください。"""
+カテゴリーは4〜6個にしてください。重要：各カテゴリーには必ずスペイン語の単語・表現をちょうど5個ずつ入れてください（3個や4個で終わらせない）。写真に写っているものを優先し、不足する場合は写真の場面で自然に使う関連語・動作・形容詞・会話表現を補ってください。カテゴリー間で同じ単語を重複させないでください。名詞は定冠詞を付け、日本語訳は自然で正確にしてください。各単語に短い例文と日本語訳を必ず付けてください。"""
     r = requests.post(OPENAI_URL, headers={"Authorization": f"Bearer {key}"},
         json={"model": AI_MODEL, "input": [{"role": "user", "content": [
             {"type": "input_text", "text": prompt},
             {"type": "input_image", "image_url": f"data:image/jpeg;base64,{b64}", "detail": "low"}
-        ]}], "max_output_tokens": 1100, "store": False}, timeout=60)
+        ]}], "max_output_tokens": 1900, "store": False}, timeout=60)
     r.raise_for_status()
     return json_result(response_text(r.json()))
 
@@ -166,7 +166,7 @@ JSONだけを返し、Markdownや説明文は付けないでください。
 def word_coach_ai(words_text, level, key):
     """覚えにくい単語・混同しやすい単語の覚え方を提案する。"""
     prompt = f"""あなたは日本人向けのスペイン語教師です。
-学習者のレベルは{level}です。次の単語について、覚え方と見分け方を日本語で提案してください。
+学習者のレベルは{level}（A1またはA2）です。次の単語について、覚え方と見分け方を日本語で提案してください。A1では基本的な語彙と簡単な文で、A2では日常会話で使う少し幅広い語彙と表現で説明してください。B1以上の難しい文法や語彙は避けてください。
 入力された単語：{words_text}
 
 入力が似た単語の組み合わせなら、意味・ニュアンス・使い分けを対比してください。
@@ -193,7 +193,7 @@ def usage_caption():
     if st.session_state.get("ai_day") != day_key():
         st.session_state.ai_day = day_key()
         st.session_state.ai_count = 0
-    st.caption(f"本日のAI利用：{st.session_state.get('ai_count',0)}/{DAILY_AI_LIMIT}回（写真マインドマップ生成）")
+    st.caption(f"本日のAI利用：{st.session_state.get('ai_count',0)}/{DAILY_AI_LIMIT}回（マインドマップ・苦手単語攻略の合計）")
 
 
 # セッション状態
@@ -314,7 +314,7 @@ elif mode == "🌱 写真からスペイン語マインドマップを作る":
 
     photo = st.file_uploader("写真をアップロード（JPG・PNG・WEBP）",
                              type=["jpg", "jpeg", "png", "webp"], key="mindmap_photo")
-    level = st.selectbox("スペイン語の学習レベル", ["A1", "A2", "B1"], index=1)
+    level = st.selectbox("スペイン語の学習レベル", ["A1", "A2"], index=1)
     usage_caption()
 
     if photo is not None:
@@ -379,7 +379,7 @@ elif mode == "💡 苦手単語の攻略":
         placeholder="例：de repente / rápidamente",
         max_chars=160,
     )
-    level = st.selectbox("スペイン語の学習レベル", ["A1", "A2", "B1"], index=1, key="coach_level")
+    level = st.selectbox("スペイン語の学習レベル", ["A1", "A2"], index=1, key="coach_level")
     usage_caption()
     if st.button("✨ 覚え方・見分け方を提案", type="primary", use_container_width=True):
         key = api_key()
