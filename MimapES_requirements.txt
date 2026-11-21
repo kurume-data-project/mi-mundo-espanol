@@ -1,0 +1,8 @@
+streamlit
+pandas
+requests
+plotly
+openpyxl
+xlrd
+Pillow
+openai>=1.66.0
