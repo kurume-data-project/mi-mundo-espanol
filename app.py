@@ -99,7 +99,7 @@ MINDMAP = {
 
 # --- AI cost controls ---
 AI_MODEL = "gpt-4o-mini"
-DAILY_AI_LIMIT = 5
+DAILY_AI_LIMIT = 20
 OPENAI_URL = "https://api.openai.com/v1/responses"
 
 def api_key():
@@ -162,6 +162,33 @@ JSONだけを返し、Markdownや説明文は付けないでください。
     r.raise_for_status()
     return json_result(response_text(r.json()))
 
+@st.cache_data(ttl=86400, show_spinner=False)
+def word_coach_ai(words_text, level, key):
+    """覚えにくい単語・混同しやすい単語の覚え方を提案する。"""
+    prompt = f"""あなたは日本人向けのスペイン語教師です。
+学習者のレベルは{level}です。次の単語について、覚え方と見分け方を日本語で提案してください。
+入力された単語：{words_text}
+
+入力が似た単語の組み合わせなら、意味・ニュアンス・使い分けを対比してください。
+単語が1つなら、意味、語の成り立ち（確実な場合のみ）、覚え方、よく使う場面を説明してください。
+語呂合わせは無理に作らず、正確さを優先してください。例文は自然で短いスペイン語にし、日本語訳を付けてください。
+最後に理解を確認する3問のミニクイズを作ってください。
+JSONだけを返し、Markdownのコードフェンスや前置きは付けないでください。
+形式：
+{{"title":"短いタイトル","summary":"意味・違いの要約","comparison":[{{"word":"単語","meaning":"意味","nuance":"ニュアンス・使い方","memory_tip":"覚え方"}}],
+"how_to_distinguish":["見分け方1","見分け方2"],"examples":[{{"es":"スペイン語の例文","ja":"日本語訳","point":"注目ポイント"}}],
+"quiz":[{{"question":"問題文","options":["選択肢A","選択肢B"],"answer":"正解","explanation":"解説"}}]}}
+comparisonは1〜4項目、examplesは2〜3項目、quizは3問にしてください。"""
+    r = requests.post(
+        OPENAI_URL,
+        headers={"Authorization": f"Bearer {key}"},
+        json={"model": AI_MODEL, "input": prompt, "max_output_tokens": 1300, "store": False},
+        timeout=60,
+    )
+    r.raise_for_status()
+    return json_result(response_text(r.json()))
+
+
 def usage_caption():
     if st.session_state.get("ai_day") != day_key():
         st.session_state.ai_day = day_key()
@@ -171,7 +198,7 @@ def usage_caption():
 
 # セッション状態
 defaults = {"score":0,"total":0,"round_id":0,"history":[],"current_question":None,
-            "answered":False,"selected":[],"is_correct":False,"ai_day":day_key(),"ai_count":0,"mindmap_result":None}
+            "answered":False,"selected":[],"is_correct":False,"ai_day":day_key(),"ai_count":0,"mindmap_result":None,"word_coach_result":None}
 for key, value in defaults.items():
     if key not in st.session_state:
         st.session_state[key] = value
@@ -205,7 +232,9 @@ st.markdown("<h1 class='main-title'>🇪🇸 MimapES</h1>", unsafe_allow_html=Tr
 st.markdown("<p class='sub-title'>Mi mapa. Mi español.</p>", unsafe_allow_html=True)
 
 mode = st.radio("学習モード",
-    ["📷 写真クイズで学ぶ","🌱 写真からスペイン語マインドマップを作る"],
+    ["📷 写真クイズで学ぶ",
+     "🌱 写真からスペイン語マインドマップを作る",
+     "💡 苦手単語の攻略"],
     horizontal=True)
 st.divider()
 
@@ -340,6 +369,93 @@ elif mode == "🌱 写真からスペイン語マインドマップを作る":
             st.caption("写真に写っているものを中心に、関連語や短い例文もまとめています。")
     elif photo is None:
         st.info("まず写真をアップロードしてください。写真に合わせてAIがマインドマップを作ります。")
+
+# モード③ 苦手単語の攻略
+elif mode == "💡 苦手単語の攻略":
+    st.header("💡 苦手単語の攻略")
+    st.write("どうしても覚えられない単語や、似ていて混同する単語を入力してください。AIが覚え方・見分け方・例文・ミニクイズを提案します。")
+    words_text = st.text_input(
+        "単語を入力（複数ある場合は「/」や「,」で区切る）",
+        placeholder="例：de repente / rápidamente",
+        max_chars=160,
+    )
+    level = st.selectbox("スペイン語の学習レベル", ["A1", "A2", "B1"], index=1, key="coach_level")
+    usage_caption()
+    if st.button("✨ 覚え方・見分け方を提案", type="primary", use_container_width=True):
+        key = api_key()
+        if not words_text.strip():
+            st.warning("単語を入力してください。")
+        elif not key:
+            st.error("APIキーが設定されていません。Streamlit SecretsにOPENAI_API_KEYを設定してください。")
+        elif not ai_allowed():
+            st.warning(f"本日のAI利用上限{DAILY_AI_LIMIT}回に達しました。明日また利用できます。")
+        else:
+            try:
+                with st.spinner("単語の違いや覚え方を考えています..."):
+                    result = word_coach_ai(words_text.strip(), level, key)
+                ai_used()
+                st.session_state.word_coach_result = {"level": level, "input": words_text.strip(), "data": result}
+                st.rerun()
+            except requests.HTTPError as e:
+                st.error(f"APIエラー {e.response.status_code}。APIキー・支払い・利用上限を確認してください。")
+            except Exception as e:
+                st.error(f"提案を作成できませんでした: {e}")
+
+    saved_coach = st.session_state.get("word_coach_result")
+    if saved_coach:
+        d = saved_coach["data"]
+        st.divider()
+        st.subheader(d.get("title", "単語の攻略ポイント"))
+        st.caption(f"入力：{saved_coach.get('input', '')}｜学習レベル：{saved_coach.get('level', level)}")
+        if d.get("summary"):
+            st.info(d["summary"])
+
+        comparison = d.get("comparison", [])
+        if comparison:
+            st.markdown("### 🔍 意味と使い方")
+            for item in comparison:
+                with st.container(border=True):
+                    st.markdown(f"**{item.get('word', '')}** — {item.get('meaning', '')}")
+                    if item.get("nuance"):
+                        st.write(item["nuance"])
+                    if item.get("memory_tip"):
+                        st.success(f"覚え方：{item['memory_tip']}")
+
+        tips = d.get("how_to_distinguish", [])
+        if tips:
+            st.markdown("### 🧭 混同しないための見分け方")
+            for tip in tips:
+                st.write(f"• {tip}")
+
+        examples = d.get("examples", [])
+        if examples:
+            st.markdown("### 🗣️ 例文で確認")
+            for item in examples:
+                st.markdown(f"**{item.get('es', '')}**")
+                st.write(item.get("ja", ""))
+                if item.get("point"):
+                    st.caption(item["point"])
+
+        quiz = d.get("quiz", [])
+        if quiz:
+            st.markdown("### 📝 ミニクイズ")
+            for i, item in enumerate(quiz):
+                st.write(f"**{i+1}. {item.get('question', '')}**")
+                options = item.get("options", [])
+                if options:
+                    choice = st.radio(
+                        f"回答 {i+1}",
+                        options,
+                        key=f"coach_quiz_{hashlib.md5((saved_coach.get('input','') + str(i)).encode()).hexdigest()}",
+                        index=None,
+                    )
+                    if choice:
+                        if choice == item.get("answer"):
+                            st.success("正解！")
+                        else:
+                            st.warning(f"正解：{item.get('answer', '')}")
+                        if item.get("explanation"):
+                            st.caption(item["explanation"])
 
 st.divider()
 usage_caption()
