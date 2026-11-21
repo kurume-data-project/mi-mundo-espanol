@@ -1,16 +1,15 @@
 import random
-import hashlib
-import io
-import json
+import re
+import base64, hashlib, io, json
 from datetime import date
 from collections import defaultdict
 
 import pandas as pd
+import requests
 import streamlit as st
 from PIL import Image
-from openai import OpenAI
 
-st.set_page_config(page_title="MimapES | Mi mapa. Mi español.", page_icon="🇪🇸", layout="wide")
+st.set_page_config(page_title="MimapES", page_icon="🇪🇸", layout="wide")
 
 st.markdown("""
 <style>
@@ -97,9 +96,82 @@ MINDMAP = {
 "行動・会話":[("visitar","訪れる"),("hacer fotos","写真を撮る"),("alojarse","宿泊する"),("¿Cuánto cuesta la entrada?","入場料はいくらですか？"),("Tengo una reserva.","予約しています。")]})
 }
 
+
+# --- AI cost controls ---
+AI_MODEL = "gpt-4o-mini"
+DAILY_AI_LIMIT = 5
+OPENAI_URL = "https://api.openai.com/v1/responses"
+
+def api_key():
+    try:
+        return st.secrets.get("OPENAI_API_KEY", "")
+    except Exception:
+        return ""
+
+def day_key():
+    return date.today().isoformat()
+
+def ai_allowed():
+    if st.session_state.get("ai_day") != day_key():
+        st.session_state.ai_day = day_key()
+        st.session_state.ai_count = 0
+    return st.session_state.get("ai_count", 0) < DAILY_AI_LIMIT
+
+def ai_used():
+    if st.session_state.get("ai_day") != day_key():
+        st.session_state.ai_day = day_key()
+        st.session_state.ai_count = 0
+    st.session_state.ai_count += 1
+
+def response_text(data):
+    parts = []
+    for item in data.get("output", []):
+        if item.get("type") == "message":
+            parts.extend(x.get("text", "") for x in item.get("content", []) if x.get("type") == "output_text")
+    return "\n".join(parts).strip()
+
+def json_result(text):
+    text = text.strip()
+    text = re.sub(r"^```(?:json)?\s*", "", text)
+    text = re.sub(r"\s*```$", "", text)
+    return json.loads(text)
+
+def small_jpeg(upload):
+    im = Image.open(upload).convert("RGB")
+    im.thumbnail((768, 768))
+    b = io.BytesIO()
+    im.save(b, format="JPEG", quality=65, optimize=True)
+    return b.getvalue()
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def mindmap_ai(jpeg, level, key):
+    """写真をもとに、カテゴリー別のスペイン語学習マインドマップを作る。"""
+    b64 = base64.b64encode(jpeg).decode("utf-8")
+    prompt = f"""あなたは日本人向けのスペイン語教師です。画像を観察し、レベル{level}の学習者向けに、写真を中心としたスペイン語マインドマップを作成してください。
+画像に実際に写っているものを中心に、関連する場所・人・物・食べ物・自然・動作・会話表現も含めてください。見えない物を写っていると断定しないでください。
+JSONだけを返し、Markdownや説明文は付けないでください。
+形式:
+{{"scene_es":"写真の場面を表す自然なスペイン語","scene_ja":"日本語のテーマ名","summary":"写真の短い説明","categories":[{{"name":"カテゴリー名","words":[{{"es":"スペイン語（名詞は定冠詞付き）","ja":"日本語訳","example_es":"短い例文","example_ja":"例文の日本語訳"}}]}}]}}
+カテゴリーは4〜6個、各カテゴリーの単語は3〜5個。重複を避け、訳は自然で正確に。例文は短く{level}程度にしてください。"""
+    r = requests.post(OPENAI_URL, headers={"Authorization": f"Bearer {key}"},
+        json={"model": AI_MODEL, "input": [{"role": "user", "content": [
+            {"type": "input_text", "text": prompt},
+            {"type": "input_image", "image_url": f"data:image/jpeg;base64,{b64}", "detail": "low"}
+        ]}], "max_output_tokens": 1100, "store": False}, timeout=60)
+    r.raise_for_status()
+    return json_result(response_text(r.json()))
+
+def usage_caption():
+    if st.session_state.get("ai_day") != day_key():
+        st.session_state.ai_day = day_key()
+        st.session_state.ai_count = 0
+    st.caption(f"本日のAI利用：{st.session_state.get('ai_count',0)}/{DAILY_AI_LIMIT}回（写真マインドマップ生成）")
+
+
 # セッション状態
 defaults = {"score":0,"total":0,"round_id":0,"history":[],"current_question":None,
-            "answered":False,"selected":[],"is_correct":False}
+            "answered":False,"selected":[],"is_correct":False,"ai_day":day_key(),"ai_count":0,"mindmap_result":None}
 for key, value in defaults.items():
     if key not in st.session_state:
         st.session_state[key] = value
@@ -130,14 +202,11 @@ if st.session_state.current_question is None:
     next_question()
 
 st.markdown("<h1 class='main-title'>🇪🇸 MimapES</h1>", unsafe_allow_html=True)
-st.markdown("<p class='sub-title'>スペイン語の世界を広げよう！</p>", unsafe_allow_html=True)
+st.markdown("<p class='sub-title'>Mi mapa. Mi español.</p>", unsafe_allow_html=True)
 
-mode = st.radio("学習モード", [
-    "📷 写真クイズで学ぶ",
-    "🌱 写真からマインドマップを作る",
-    "🔎 AIで単語を探究する",
-    "🖼️ AIで写真を認識する",
-], horizontal=True)
+mode = st.radio("学習モード",
+    ["📷 写真クイズで学ぶ","🌱 写真からスペイン語マインドマップを作る"],
+    horizontal=True)
 st.divider()
 
 # モード① 写真クイズ（元の出題・採点・復習の流れを維持）
@@ -209,176 +278,69 @@ if mode == "📷 写真クイズで学ぶ":
             next_question()
             st.rerun()
 
-# モード② 写真アップロード＋テーマ選択＋単語マインドマップ
-elif mode == "🌱 写真からマインドマップを作る":
+# モード② 写真からAIマインドマップを生成
+elif mode == "🌱 写真からスペイン語マインドマップを作る":
     st.header("🌱 写真からスペイン語のマインドマップを作ろう")
-    st.write("写真をアップロードし、テーマを選ぶと、関連する単語をカテゴリー別に表示します。")
-    st.info("写真の内容をAIで自動認識する機能はありません。選択したテーマに登録された単語を表示します。")
+    st.write("写真を1枚アップロードすると、AIが写っているものや関連表現を読み取り、カテゴリー別のスペイン語マインドマップを作ります。")
 
     photo = st.file_uploader("写真をアップロード（JPG・PNG・WEBP）",
-                             type=["jpg","jpeg","png","webp"],key="mindmap_photo")
-    theme = st.selectbox("写真のテーマを選んでください",list(MINDMAP.keys()),key="mindmap_theme")
-    title,groups = MINDMAP[theme]
+                             type=["jpg", "jpeg", "png", "webp"], key="mindmap_photo")
+    level = st.selectbox("スペイン語の学習レベル", ["A1", "A2", "B1"], index=1)
+    usage_caption()
+
     if photo is not None:
-        st.image(photo,caption=f"アップロードした写真：{theme}",use_container_width=True)
-    else:
-        st.caption("写真をアップロードすると、ここに表示されます。")
-
-    st.divider()
-    st.subheader("🧠 スペイン語マインドマップ")
-    st.markdown(f"<div class='center-node'>{theme}<br><span style='font-size:15px;font-weight:normal'>{title}</span></div>",
-                unsafe_allow_html=True)
-    cols = st.columns(2)
-    rows = []
-    for i,(category,words) in enumerate(groups.items()):
-        with cols[i%2]:
-            with st.container(border=True):
-                st.markdown(f"**🌿 {category}**")
-                for spanish,japanese in words:
-                    st.markdown(f"- **{spanish}** — {japanese}")
-                    rows.append({"テーマ":theme,"カテゴリー":category,
-                                 "スペイン語":spanish,"日本語":japanese})
-    st.divider()
-    st.subheader("📥 単語をダウンロード")
-    csv = pd.DataFrame(rows).to_csv(index=False,encoding="utf-8-sig")
-    st.download_button("このテーマの単語をCSVで保存",data=csv,
-                       file_name="mimapes_vocabulary.csv",
-                       mime="text/csv",use_container_width=True)
-    st.caption("単語データは学習用の基本語彙です。地域や場面によって別の表現が使われる場合があります。")
-
-# AI共通設定：1ブラウザーセッションにつき1日5回
-DAILY_LIMIT = 5
-TODAY = date.today().isoformat()
-if st.session_state.get("ai_usage_date") != TODAY:
-    st.session_state.ai_usage_date = TODAY
-    st.session_state.ai_usage_count = 0
-if "ai_usage_count" not in st.session_state:
-    st.session_state.ai_usage_count = 0
-
-st.divider()
-st.subheader("🤖 AI利用状況")
-st.write(f"本日の利用：**{st.session_state.ai_usage_count} / {DAILY_LIMIT} 回**")
-st.caption("単語探究・写真認識を合わせた回数です。同じ結果がキャッシュから表示される場合は追加課金されません。")
-
-
-def get_openai_client():
-    try:
-        api_key = st.secrets["OPENAI_API_KEY"]
-    except Exception:
-        api_key = None
-    if not api_key:
-        st.error("APIキーが設定されていません。Streamlit の Settings → Secrets に OPENAI_API_KEY を設定してください。")
-        return None
-    return OpenAI(api_key=api_key)
-
-
-@st.cache_data(show_spinner=False, ttl=60 * 60 * 24)
-def explore_word_cached(word: str, level: str):
-    client = get_openai_client()
-    if client is None:
-        return ""
-    response = client.responses.create(
-        model="gpt-6-luna",
-        max_output_tokens=450,
-        input=[{"role": "user", "content": (
-            "あなたは日本語で説明するスペイン語教師です。"
-            f"学習レベルは{level}。単語・表現「{word}」を短く説明してください。"
-            "意味、品詞・性数（該当する場合）、使い方の注意1点、"
-            "短い例文2つ（スペイン語と日本語訳）だけを、見出し付きで日本語で回答。"
-            "推測で断定せず、スペイン（スペイン本土）で一般的な用法を優先。"
-        )}]
-    )
-    return response.output_text
-
-
-@st.cache_data(show_spinner=False, ttl=60 * 60 * 24)
-def recognize_photo_cached(image_bytes: bytes, mime_type: str, language_level: str):
-    client = get_openai_client()
-    if client is None:
-        return ""
-    import base64
-    encoded = base64.b64encode(image_bytes).decode("ascii")
-    data_url = f"data:{mime_type};base64,{encoded}"
-    response = client.responses.create(
-        model="gpt-6-luna",
-        max_output_tokens=550,
-        input=[{"role": "user", "content": [
-            {"type": "input_text", "text": (
-                "この写真に実際に写っているものをスペイン語学習用に説明してください。"
-                f"レベルは{language_level}。写真から確認できる物・人・場所を最大8個選び、"
-                "スペイン語（冠詞付き名詞）—日本語訳の一覧にしてください。"
-                "最後に、写真を説明する短いスペイン語文を2文と日本語訳を付けてください。"
-                "見えないものを推測して追加しないでください。回答は日本語で簡潔に。"
-            )},
-            {"type": "input_image", "image_url": data_url, "detail": "low"}
-        ]}]
-    )
-    return response.output_text
-
-
-def can_use_ai():
-    if st.session_state.ai_usage_count >= DAILY_LIMIT:
-        st.warning("本日のAI利用上限（5回）に達しました。明日また利用してください。")
-        return False
-    return True
-
-
-if mode == "🔎 AIで単語を探究する":
-    st.header("🔎 AI単語探究")
-    st.write("スペイン語の単語や表現の意味・使い方・例文を確認できます。")
-    word = st.text_input("調べたいスペイン語", placeholder="例：de repente")
-    level = st.selectbox("学習レベル", ["A1", "A2", "B1"], index=1)
-    if st.button("単語を調べる", type="primary", use_container_width=True):
-        cleaned = word.strip()
-        if not cleaned:
-            st.warning("単語または表現を入力してください。")
-        elif len(cleaned) > 80:
-            st.warning("入力は80文字以内にしてください。")
-        elif can_use_ai():
-            with st.spinner("単語を調べています…"):
+        st.image(photo, caption="マインドマップにする写真", use_container_width=True)
+        st.caption("画像は長辺768px・JPEG品質65に縮小してAIに送信します。")
+        if st.button("✨ AIでマインドマップを作成", type="primary", use_container_width=True):
+            key = api_key()
+            if not key:
+                st.error("APIキーが設定されていません。Streamlit SecretsにOPENAI_API_KEYを設定してください。")
+            elif not ai_allowed():
+                st.warning(f"本日のAI利用上限{DAILY_AI_LIMIT}回に達しました。明日また利用できます。")
+            else:
                 try:
-                    answer = explore_word_cached(cleaned, level)
-                    if answer:
-                        st.session_state.ai_usage_count += 1
-                        st.markdown(answer)
-                    else:
-                        st.error("回答を取得できませんでした。APIキーを確認してください。")
+                    with st.spinner("写真を見ながらスペイン語のマインドマップを作成しています..."):
+                        result = mindmap_ai(small_jpeg(photo), level, key)
+                    ai_used()
+                    st.session_state.mindmap_result = {"level": level, "data": result}
+                    st.rerun()
+                except requests.HTTPError as e:
+                    st.error(f"APIエラー {e.response.status_code}。APIキー・支払い・利用上限を確認してください。")
                 except Exception as e:
-                    st.error(f"AIの呼び出しに失敗しました：{e}")
+                    st.error(f"マインドマップを作成できませんでした: {e}")
 
+    saved = st.session_state.get("mindmap_result")
+    if saved:
+        d = saved["data"]
+        st.divider()
+        st.subheader(f"🧠 {d.get('scene_es', 'Mi mapa')} — {d.get('scene_ja', '')}")
+        st.caption(f"学習レベル：{saved.get('level', level)}")
+        if d.get("summary"):
+            st.write(d["summary"])
 
-elif mode == "🖼️ AIで写真を認識する":
-    st.header("🖼️ AI写真認識")
-    st.write("写真に写っているものをAIが確認し、スペイン語の単語と例文を作ります。")
-    photo_ai = st.file_uploader("写真を選択（JPG・PNG・WEBP、最大5MB）",
-                                type=["jpg", "jpeg", "png", "webp"], key="ai_photo")
-    level_ai = st.selectbox("学習レベル", ["A1", "A2", "B1"], index=1, key="photo_level")
-    if photo_ai is not None:
-        raw = photo_ai.getvalue()
-        if len(raw) > 5 * 1024 * 1024:
-            st.error("ファイルサイズは5MB以下にしてください。")
-        else:
-            st.image(raw, caption="認識する写真", use_container_width=True)
-            if st.button("この写真をAIで認識する", type="primary", use_container_width=True):
-                if can_use_ai():
-                    try:
-                        # 画像を長辺768px・JPEG品質65に縮小して送信量を抑える
-                        img = Image.open(io.BytesIO(raw)).convert("RGB")
-                        img.thumbnail((768, 768))
-                        buf = io.BytesIO()
-                        img.save(buf, format="JPEG", quality=65, optimize=True)
-                        compressed = buf.getvalue()
-                        digest = hashlib.sha256(compressed + level_ai.encode()).hexdigest()
-                        with st.spinner("写真を確認しています…"):
-                            answer = recognize_photo_cached(compressed, "image/jpeg", level_ai)
-                        if answer:
-                            st.session_state.ai_usage_count += 1
-                            st.markdown(answer)
-                        else:
-                            st.error("認識結果を取得できませんでした。APIキーを確認してください。")
-                    except Exception as e:
-                        st.error(f"写真認識に失敗しました：{e}")
-    st.caption("写真は長辺768pxに縮小し、低詳細度で送信します。写真認識は単語探究より画像入力分の費用がかかります。")
+        rows = []
+        categories = d.get("categories", [])
+        for i, category in enumerate(categories):
+            with st.container(border=True):
+                st.markdown(f"### 🌿 {category.get('name', f'カテゴリー{i+1}')}")
+                for word in category.get("words", []):
+                    es = word.get("es", "")
+                    ja = word.get("ja", "")
+                    st.markdown(f"**{es}** — {ja}")
+                    if word.get("example_es"):
+                        st.caption(f"例：{word.get('example_es')} — {word.get('example_ja', '')}")
+                    rows.append({"テーマ": d.get("scene_ja", ""), "カテゴリー": category.get("name", ""),
+                                 "スペイン語": es, "日本語": ja,
+                                 "例文": word.get("example_es", ""), "例文訳": word.get("example_ja", "")})
+        if rows:
+            csv = pd.DataFrame(rows).to_csv(index=False, encoding="utf-8-sig")
+            st.download_button("📥 マインドマップの単語をCSV保存", data=csv,
+                               file_name="mimapes_mindmap_vocabulary.csv", mime="text/csv",
+                               use_container_width=True)
+            st.caption("写真に写っているものを中心に、関連語や短い例文もまとめています。")
+    elif photo is None:
+        st.info("まず写真をアップロードしてください。写真に合わせてAIがマインドマップを作ります。")
 
 st.divider()
+usage_caption()
 st.caption("MimapES | Mi mapa. Mi español. 🇪🇸")
