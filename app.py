@@ -99,6 +99,7 @@ MINDMAP = {
 
 # --- AI cost controls ---
 AI_MODEL = "gpt-4o-mini"
+IMAGE_MODEL = "gpt-image-2.5-flare"
 DAILY_AI_LIMIT = 20
 OPENAI_URL = "https://api.openai.com/v1/responses"
 
@@ -163,6 +164,37 @@ JSONだけを返し、Markdownや説明文は付けないでください。
     return json_result(response_text(r.json()))
 
 @st.cache_data(ttl=86400, show_spinner=False)
+def illustrated_mindmap_ai(scene_es, scene_ja, level, categories_json, key):
+    """抽出済みの語彙をもとに、イラスト付き学習ポスターを生成する。"""
+    categories = json.loads(categories_json)
+    lines = []
+    for category in categories:
+        lines.append(f"【{category.get('name', 'カテゴリー')}】")
+        for word in category.get("words", []):
+            lines.append(f"{word.get('es', '')} — {word.get('ja', '')}")
+    vocab_text = "\n".join(lines)
+    prompt = f"""Create a beautiful illustrated Spanish vocabulary mind-map study poster.
+Theme: {scene_es} / {scene_ja}. Learner level: {level} (CEFR A1-A2).
+Style: warm hand-drawn watercolor and colored-pencil cartoon illustration, friendly educational infographic, cream paper background, colorful rounded branches and small clear illustrations related to the theme. Landscape 3:2 composition, high resolution, balanced whitespace, polished printable study poster.
+Center: large theme illustration and the title '{scene_es}' with Japanese '{scene_ja}'.
+Arrange the following category headings and vocabulary around the center in separate clearly separated colored panels. Reproduce every Spanish term and Japanese translation exactly as written. Keep accents and articles. Do not invent, omit, duplicate, or translate the listed text differently. Use legible simple typography. Do not add unrelated text.
+{vocab_text}
+Important: include all listed category headings and every vocabulary pair. Keep text large and uncluttered. Add small friendly drawings that illustrate each category, but prioritize correct readable vocabulary text."""
+    response = requests.post(
+        "https://api.openai.com/v1/images/generations",
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        json={"model": IMAGE_MODEL, "prompt": prompt, "size": "1536x1024", "quality": "medium", "n": 1},
+        timeout=180,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    image_b64 = payload["data"][0].get("b64_json")
+    if not image_b64:
+        raise ValueError("画像データが返されませんでした。")
+    return base64.b64decode(image_b64)
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
 def word_coach_ai(words_text, level, key):
     """覚えにくい単語・混同しやすい単語の覚え方を提案する。"""
     prompt = f"""あなたは日本人向けのスペイン語教師です。
@@ -198,7 +230,7 @@ def usage_caption():
 
 # セッション状態
 defaults = {"score":0,"total":0,"round_id":0,"history":[],"current_question":None,
-            "answered":False,"selected":[],"is_correct":False,"ai_day":day_key(),"ai_count":0,"mindmap_result":None,"word_coach_result":None}
+            "answered":False,"selected":[],"is_correct":False,"ai_day":day_key(),"ai_count":0,"mindmap_result":None,"mindmap_illustration":None,"word_coach_result":None}
 for key, value in defaults.items():
     if key not in st.session_state:
         st.session_state[key] = value
@@ -332,6 +364,7 @@ elif mode == "🌱 写真からスペイン語マインドマップを作る":
                         result = mindmap_ai(small_jpeg(photo), level, key)
                     ai_used()
                     st.session_state.mindmap_result = {"level": level, "data": result}
+                    st.session_state.mindmap_illustration = None
                     st.rerun()
                 except requests.HTTPError as e:
                     st.error(f"APIエラー {e.response.status_code}。APIキー・支払い・利用上限を確認してください。")
@@ -346,6 +379,39 @@ elif mode == "🌱 写真からスペイン語マインドマップを作る":
         st.caption(f"学習レベル：{saved.get('level', level)}")
         if d.get("summary"):
             st.write(d["summary"])
+
+        st.markdown("### 🎨 イラスト付きマインドマップ")
+        st.write("抽出した単語を、イラスト入りの学習ポスターにします。生成した画像はPNGで保存できます。")
+        if st.button("🖼️ イラスト画像を作成", type="primary", use_container_width=True):
+            key = api_key()
+            if not key:
+                st.error("APIキーが設定されていません。")
+            elif not ai_allowed():
+                st.warning(f"本日のAI利用上限{DAILY_AI_LIMIT}回に達しました。明日また利用できます。")
+            else:
+                try:
+                    categories_json = json.dumps(d.get("categories", []), ensure_ascii=False)
+                    with st.spinner("単語を整理してイラスト付きポスターを描いています...（少し時間がかかります）"):
+                        image_bytes = illustrated_mindmap_ai(
+                            d.get("scene_es", "Mi mapa"), d.get("scene_ja", ""),
+                            saved.get("level", level), categories_json, key
+                        )
+                    ai_used()
+                    st.session_state.mindmap_illustration = image_bytes
+                    st.rerun()
+                except requests.HTTPError as e:
+                    status = e.response.status_code if e.response is not None else "不明"
+                    st.error(f"画像生成APIエラー {status}。APIの利用資格・支払い・利用上限を確認してください。")
+                except Exception as e:
+                    st.error(f"イラストを作成できませんでした: {e}")
+
+        illustration = st.session_state.get("mindmap_illustration")
+        if illustration:
+            st.image(illustration, caption="MimapES イラスト付きマインドマップ", use_container_width=True)
+            st.download_button("📥 イラストをPNGで保存", data=illustration,
+                               file_name="mimapes_illustrated_mindmap.png", mime="image/png",
+                               use_container_width=True)
+            st.caption("※画像生成AIは文字を誤って描く場合があります。正確な単語・訳は下の一覧またはCSVでも確認してください。")
 
         rows = []
         categories = d.get("categories", [])
