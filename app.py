@@ -1,11 +1,16 @@
 
+import json
 import random
-import streamlit as st
+import time
+import urllib.error
+import urllib.request
 from collections import defaultdict
+
+import streamlit as st
+
 
 # ==========================================
 # Mi Mundo Español
-# 写真を見て3つの単語を選ぶ自動出題アプリ
 # ==========================================
 
 st.set_page_config(
@@ -14,9 +19,28 @@ st.set_page_config(
     layout="wide"
 )
 
+st.markdown("""
+<style>
+.main-title {
+    text-align: center;
+    color: #245C83;
+}
+.sub-title {
+    text-align: center;
+    color: gray;
+}
+.word-card {
+    padding: 12px;
+    border-radius: 12px;
+    background: #F1F5F9;
+    margin-bottom: 8px;
+}
+</style>
+""", unsafe_allow_html=True)
+
+
 # ==========================================
 # 問題データ
-# 新しい場面・単語を追加するだけで問題数が増える
 # ==========================================
 
 SCENES = [
@@ -27,21 +51,21 @@ SCENES = [
         "level": "A1",
         "photo": "https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=1200",
         "words": [
-            ("la mesa", "テーブル", "Muebles"),
-            ("la silla", "椅子", "Muebles"),
-            ("el café", "コーヒー", "Comida y bebida"),
-            ("la taza", "カップ", "Utensilios"),
-            ("el vaso", "グラス", "Utensilios"),
-            ("el camarero", "ウェイター", "Personas"),
-            ("la camarera", "ウェイトレス", "Personas"),
-            ("la cuenta", "お会計", "Compras"),
-            ("el menú", "メニュー", "Compras"),
-            ("el azúcar", "砂糖", "Comida y bebida"),
-            ("la leche", "牛乳", "Comida y bebida"),
-            ("la terraza", "テラス", "Lugares"),
-            ("el restaurante", "レストラン", "Lugares"),
-            ("pedir", "注文する", "Acciones"),
-            ("pagar", "支払う", "Acciones"),
+            ("la mesa", "テーブル", "家具"),
+            ("la silla", "椅子", "家具"),
+            ("el café", "コーヒー", "飲食物"),
+            ("la taza", "カップ", "道具"),
+            ("el vaso", "グラス", "道具"),
+            ("el camarero", "ウェイター", "人物"),
+            ("la camarera", "ウェイトレス", "人物"),
+            ("la cuenta", "お会計", "買い物"),
+            ("el menú", "メニュー", "買い物"),
+            ("el azúcar", "砂糖", "飲食物"),
+            ("la leche", "牛乳", "飲食物"),
+            ("la terraza", "テラス", "場所"),
+            ("el restaurante", "レストラン", "場所"),
+            ("pedir", "注文する", "動作"),
+            ("pagar", "支払う", "動作"),
         ],
     },
     {
@@ -51,21 +75,21 @@ SCENES = [
         "level": "A1",
         "photo": "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=1200",
         "words": [
-            ("el mar", "海", "Naturaleza"),
-            ("la arena", "砂", "Naturaleza"),
-            ("la ola", "波", "Naturaleza"),
-            ("el sol", "太陽", "Tiempo"),
-            ("el cielo", "空", "Tiempo"),
-            ("la nube", "雲", "Tiempo"),
-            ("la toalla", "タオル", "Objetos"),
-            ("el bañador", "水着", "Objetos"),
-            ("la sombrilla", "パラソル", "Objetos"),
-            ("las gafas de sol", "サングラス", "Objetos"),
-            ("el pez", "魚", "Animales"),
-            ("el delfín", "イルカ", "Animales"),
-            ("nadar", "泳ぐ", "Acciones"),
-            ("descansar", "休む", "Acciones"),
-            ("tomar el sol", "日光浴する", "Acciones"),
+            ("el mar", "海", "自然"),
+            ("la arena", "砂", "自然"),
+            ("la ola", "波", "自然"),
+            ("el sol", "太陽", "天気"),
+            ("el cielo", "空", "天気"),
+            ("la nube", "雲", "天気"),
+            ("la toalla", "タオル", "道具"),
+            ("el bañador", "水着", "道具"),
+            ("la sombrilla", "パラソル", "道具"),
+            ("las gafas de sol", "サングラス", "道具"),
+            ("el pez", "魚", "動物"),
+            ("el delfín", "イルカ", "動物"),
+            ("nadar", "泳ぐ", "動作"),
+            ("descansar", "休む", "動作"),
+            ("tomar el sol", "日光浴する", "動作"),
         ],
     },
     {
@@ -75,21 +99,21 @@ SCENES = [
         "level": "A1",
         "photo": "https://images.unsplash.com/photo-1542838132-92c53300491e?w=1200",
         "words": [
-            ("la fruta", "果物", "Alimentos"),
-            ("la verdura", "野菜", "Alimentos"),
-            ("la manzana", "りんご", "Frutas"),
-            ("el plátano", "バナナ", "Frutas"),
-            ("la naranja", "オレンジ", "Frutas"),
-            ("la zanahoria", "にんじん", "Verduras"),
-            ("el tomate", "トマト", "Verduras"),
-            ("la cebolla", "たまねぎ", "Verduras"),
-            ("el vendedor", "販売員", "Personas"),
-            ("el cliente", "お客さん", "Personas"),
-            ("el precio", "価格", "Compras"),
-            ("el dinero", "お金", "Compras"),
-            ("la bolsa", "袋", "Objetos"),
-            ("comprar", "買う", "Acciones"),
-            ("vender", "売る", "Acciones"),
+            ("la fruta", "果物", "食べ物"),
+            ("la verdura", "野菜", "食べ物"),
+            ("la manzana", "りんご", "果物"),
+            ("el plátano", "バナナ", "果物"),
+            ("la naranja", "オレンジ", "果物"),
+            ("la zanahoria", "にんじん", "野菜"),
+            ("el tomate", "トマト", "野菜"),
+            ("la cebolla", "たまねぎ", "野菜"),
+            ("el vendedor", "販売員", "人物"),
+            ("el cliente", "お客さん", "人物"),
+            ("el precio", "価格", "買い物"),
+            ("el dinero", "お金", "買い物"),
+            ("la bolsa", "袋", "道具"),
+            ("comprar", "買う", "動作"),
+            ("vender", "売る", "動作"),
         ],
     },
     {
@@ -99,21 +123,21 @@ SCENES = [
         "level": "A1",
         "photo": "https://images.unsplash.com/photo-1519608487953-e999c86e7455?w=1200",
         "words": [
-            ("la calle", "通り", "Lugares"),
-            ("el edificio", "建物", "Lugares"),
-            ("la plaza", "広場", "Lugares"),
-            ("el parque", "公園", "Lugares"),
-            ("la tienda", "店", "Compras"),
-            ("el banco", "銀行", "Lugares"),
-            ("el semáforo", "信号", "Transporte"),
-            ("el coche", "車", "Transporte"),
-            ("el autobús", "バス", "Transporte"),
-            ("la bicicleta", "自転車", "Transporte"),
-            ("el árbol", "木", "Naturaleza"),
-            ("la farola", "街灯", "Objetos"),
-            ("caminar", "歩く", "Acciones"),
-            ("cruzar", "渡る", "Acciones"),
-            ("buscar", "探す", "Acciones"),
+            ("la calle", "通り", "場所"),
+            ("el edificio", "建物", "建物"),
+            ("la plaza", "広場", "場所"),
+            ("el parque", "公園", "場所"),
+            ("la tienda", "店", "買い物"),
+            ("el banco", "銀行", "建物"),
+            ("el semáforo", "信号", "交通"),
+            ("el coche", "車", "交通"),
+            ("el autobús", "バス", "交通"),
+            ("la bicicleta", "自転車", "交通"),
+            ("el árbol", "木", "自然"),
+            ("la farola", "街灯", "道具"),
+            ("caminar", "歩く", "動作"),
+            ("cruzar", "渡る", "動作"),
+            ("buscar", "探す", "動作"),
         ],
     },
     {
@@ -123,21 +147,21 @@ SCENES = [
         "level": "A1",
         "photo": "https://images.unsplash.com/photo-1600210492486-724fe5c67fb0?w=1200",
         "words": [
-            ("la casa", "家", "Lugares"),
-            ("la habitación", "部屋", "Lugares"),
-            ("la cocina", "台所", "Lugares"),
-            ("el baño", "浴室・トイレ", "Lugares"),
-            ("la cama", "ベッド", "Muebles"),
-            ("el sofá", "ソファ", "Muebles"),
-            ("la mesa", "テーブル", "Muebles"),
-            ("la puerta", "ドア", "Objetos"),
-            ("la ventana", "窓", "Objetos"),
-            ("la lámpara", "ランプ", "Objetos"),
-            ("el frigorífico", "冷蔵庫", "Electrodomésticos"),
-            ("la televisión", "テレビ", "Electrodomésticos"),
-            ("cocinar", "料理する", "Acciones"),
-            ("limpiar", "掃除する", "Acciones"),
-            ("dormir", "眠る", "Acciones"),
+            ("la casa", "家", "場所"),
+            ("la habitación", "部屋", "場所"),
+            ("la cocina", "台所", "場所"),
+            ("el baño", "浴室・トイレ", "場所"),
+            ("la cama", "ベッド", "家具"),
+            ("el sofá", "ソファ", "家具"),
+            ("la mesa", "テーブル", "家具"),
+            ("la puerta", "ドア", "道具"),
+            ("la ventana", "窓", "道具"),
+            ("la lámpara", "ランプ", "道具"),
+            ("el frigorífico", "冷蔵庫", "家電"),
+            ("la televisión", "テレビ", "家電"),
+            ("cocinar", "料理する", "動作"),
+            ("limpiar", "掃除する", "動作"),
+            ("dormir", "眠る", "動作"),
         ],
     },
     {
@@ -147,65 +171,60 @@ SCENES = [
         "level": "A1",
         "photo": "https://images.unsplash.com/photo-1509062522246-3755977927d7?w=1200",
         "words": [
-            ("la escuela", "学校", "Lugares"),
-            ("el aula", "教室", "Lugares"),
-            ("la biblioteca", "図書館", "Lugares"),
-            ("el profesor", "先生（男性）", "Personas"),
-            ("la profesora", "先生（女性）", "Personas"),
-            ("el estudiante", "学生", "Personas"),
-            ("el libro", "本", "Objetos"),
-            ("el cuaderno", "ノート", "Objetos"),
-            ("el lápiz", "鉛筆", "Objetos"),
-            ("el bolígrafo", "ボールペン", "Objetos"),
-            ("la mochila", "リュック", "Objetos"),
-            ("la pizarra", "黒板", "Objetos"),
-            ("estudiar", "勉強する", "Acciones"),
-            ("leer", "読む", "Acciones"),
-            ("escribir", "書く", "Acciones"),
+            ("la escuela", "学校", "場所"),
+            ("el aula", "教室", "場所"),
+            ("la biblioteca", "図書館", "場所"),
+            ("el profesor", "先生（男性）", "人物"),
+            ("la profesora", "先生（女性）", "人物"),
+            ("el estudiante", "学生", "人物"),
+            ("el libro", "本", "道具"),
+            ("el cuaderno", "ノート", "道具"),
+            ("el lápiz", "鉛筆", "道具"),
+            ("el bolígrafo", "ボールペン", "道具"),
+            ("la mochila", "リュック", "道具"),
+            ("la pizarra", "黒板", "道具"),
+            ("estudiar", "勉強する", "動作"),
+            ("leer", "読む", "動作"),
+            ("escribir", "書く", "動作"),
         ],
     },
 ]
+
 
 # ==========================================
 # セッション状態
 # ==========================================
 
-if "score" not in st.session_state:
-    st.session_state.score = 0
+defaults = {
+    "score": 0,
+    "total": 0,
+    "round_id": 0,
+    "history": [],
+    "current_question": None,
+    "answered": False,
+    "selected": [],
+    "exploration_result": None,
+    "exploration_word": "",
+    "last_ai_search": 0,
+    "ai_search_count": 0,
+}
 
-if "total" not in st.session_state:
-    st.session_state.total = 0
-
-if "round_id" not in st.session_state:
-    st.session_state.round_id = 0
-
-if "history" not in st.session_state:
-    st.session_state.history = []
-
-if "current_question" not in st.session_state:
-    st.session_state.current_question = None
-
-if "answered" not in st.session_state:
-    st.session_state.answered = False
-
-if "selected" not in st.session_state:
-    st.session_state.selected = []
+for key, value in defaults.items():
+    if key not in st.session_state:
+        st.session_state[key] = value
 
 
 # ==========================================
-# 自動問題生成
+# 問題の自動生成
 # ==========================================
 
 def generate_question():
 
-    # 既出問題と重ならない組み合わせを探す
     for _ in range(500):
 
         scene = random.choice(SCENES)
 
-        correct_words = random.sample(
-            scene["words"], 3
-        )
+        correct_words = random.sample(scene["words"], 3)
 
         other_words = [
             word
@@ -219,13 +238,9 @@ def generate_question():
         choices = correct_words + distractors
         random.shuffle(choices)
 
-        correct_set = tuple(
-            sorted(word[0] for word in correct_words)
-        )
-
         signature = (
             scene["id"],
-            correct_set,
+            tuple(sorted(word[0] for word in correct_words)),
             tuple(sorted(word[0] for word in distractors))
         )
 
@@ -235,12 +250,12 @@ def generate_question():
             return {
                 "scene": scene,
                 "choices": choices,
-                "correct": correct_set,
+                "correct": tuple(
+                    sorted(word[0] for word in correct_words)
+                )
             }
 
-    # 組み合わせが尽きた場合は履歴をリセット
     st.session_state.history = []
-
     return generate_question()
 
 
@@ -257,198 +272,482 @@ if st.session_state.current_question is None:
 
 
 # ==========================================
-# ヘッダー
+# AI単語探究機能
+# ==========================================
+
+def get_openai_key():
+
+    try:
+        return st.secrets["OPENAI_API_KEY"]
+    except Exception:
+        return None
+
+
+def explore_word(word, level):
+
+    api_key = get_openai_key()
+
+    if not api_key:
+        raise ValueError(
+            "OpenAI APIキーが設定されていません。"
+            "StreamlitのSecretsを設定してください。"
+        )
+
+    prompt = f"""
+あなたは日本人向けのスペイン語教師です。
+
+学習者が入力したスペイン語について、
+日本語でわかりやすく説明してください。
+
+入力単語：{word}
+学習レベル：{level}
+
+次の条件を守ってください。
+
+・スペイン語として正しい意味を説明する
+・名詞なら男性名詞・女性名詞を明記する
+・動詞なら不定詞と基本的な意味を説明する
+・関連語を6カテゴリーに分けて紹介する
+・各カテゴリーに2〜4語を入れる
+・関連語にはスペイン語と日本語訳を付ける
+・例文は自然なスペイン語にする
+・例文を3つ作り、日本語訳も付ける
+・学習レベルに合った簡単な文にする
+・文法ポイントを2〜3個説明する
+・不確かな情報を断定しない
+・入力がスペイン語でない場合は、スペイン語の候補を説明する
+
+次のJSON形式だけで回答してください。
+
+{{
+  "word": "入力された単語",
+  "meaning": "日本語の意味",
+  "part_of_speech": "品詞",
+  "grammar": "性数や活用などの基本情報",
+  "categories": [
+    {{
+      "name": "カテゴリー名",
+      "words": [
+        {{
+          "spanish": "関連するスペイン語",
+          "japanese": "日本語訳"
+        }}
+      ]
+    }}
+  ],
+  "examples": [
+    {{
+      "spanish": "スペイン語の例文",
+      "japanese": "日本語訳"
+    }}
+  ],
+  "grammar_points": [
+    "文法ポイント"
+  ],
+  "study_tip": "覚え方のヒント"
+}}
+"""
+
+    payload = {
+        "model": "gpt-4o-mini",
+        "input": [
+            {
+                "role": "system",
+                "content": (
+                    "You are a careful Spanish language teacher. "
+                    "Return valid JSON only."
+                )
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
+        "text": {
+            "format": {
+                "type": "json_object"
+            }
+        },
+        "max_output_tokens": 2200
+    }
+
+    request = urllib.request.Request(
+        "https://api.openai.com/v1/responses",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}"
+        },
+        method="POST"
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            result = json.loads(response.read().decode("utf-8"))
+
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode("utf-8", errors="replace")
+        raise RuntimeError(
+            f"AI APIエラー（HTTP {error.code}）。"
+            "APIキー・利用状況・モデル設定を確認してください。"
+        ) from error
+
+    except urllib.error.URLError as error:
+        raise RuntimeError(
+            "AIサービスに接続できませんでした。通信環境を確認してください。"
+        ) from error
+
+    output_text = ""
+
+    for item in result.get("output", []):
+        if item.get("type") == "message":
+            for content in item.get("content", []):
+                if content.get("type") == "output_text":
+                    output_text += content.get("text", "")
+
+    if not output_text:
+        raise RuntimeError(
+            "AIから回答を取得できませんでした。もう一度お試しください。"
+        )
+
+    try:
+        return json.loads(output_text)
+    except json.JSONDecodeError as error:
+        raise RuntimeError(
+            "AIの回答を読み取れませんでした。もう一度お試しください。"
+        ) from error
+
+
+# ==========================================
+# ヘッダー・モード選択
 # ==========================================
 
 st.markdown(
-    "<h1 style='text-align:center;color:#245C83;'>"
-    "🇪🇸 Mi Mundo Español</h1>",
+    "<h1 class='main-title'>🇪🇸 Mi Mundo Español</h1>",
     unsafe_allow_html=True
 )
 
 st.markdown(
-    "<p style='text-align:center;color:gray;'>"
-    "写真からスペイン語の世界を広げよう！</p>",
+    "<p class='sub-title'>スペイン語の世界を広げよう！</p>",
     unsafe_allow_html=True
 )
 
-col1, col2, col3 = st.columns(3)
-
-col1.metric("正解数", st.session_state.score)
-col2.metric("回答数", st.session_state.total)
-
-accuracy = (
-    round(st.session_state.score / st.session_state.total * 100)
-    if st.session_state.total > 0 else 0
+mode = st.radio(
+    "学習モード",
+    [
+        "📷 写真で単語を学ぶ",
+        "🔎 単語を探究する"
+    ],
+    horizontal=True
 )
-
-col3.metric("正解率", f"{accuracy}%")
 
 st.divider()
 
 
 # ==========================================
-# 現在の問題
+# モード① 写真で単語を学ぶ
 # ==========================================
 
-question = st.session_state.current_question
-scene = question["scene"]
+if mode == "📷 写真で単語を学ぶ":
 
-st.subheader(f"📷 {scene['title']}")
+    st.subheader("📷 写真を見て3つ選ぼう")
 
-st.caption(
-    f"テーマ：{scene['ja']}　|　レベル：{scene['level']}"
-)
+    col1, col2, col3 = st.columns(3)
 
-st.image(
-    scene["photo"],
-    use_container_width=True
-)
+    col1.metric("正解数", st.session_state.score)
+    col2.metric("回答数", st.session_state.total)
 
-# ==========================================
-# 回答前
-# ==========================================
-
-if not st.session_state.answered:
-
-    st.info(
-        "写真を見て、関係するスペイン語を3つ選んでください。"
-        "日本語訳は答え合わせの後に表示されます。"
+    accuracy = (
+        round(
+            st.session_state.score /
+            st.session_state.total * 100
+        )
+        if st.session_state.total > 0 else 0
     )
 
-    with st.form(
-        key=f"answer_form_{st.session_state.round_id}"
-    ):
+    col3.metric("正解率", f"{accuracy}%")
 
-        selected = []
+    question = st.session_state.current_question
+    scene = question["scene"]
 
-        for i, word in enumerate(question["choices"]):
+    st.subheader(scene["title"])
+    st.caption(f"テーマ：{scene['ja']} | レベル：{scene['level']}")
 
-            checked = st.checkbox(
-                word[0],
-                key=f"choice_{st.session_state.round_id}_{i}"
-            )
+    st.image(scene["photo"], use_container_width=True)
 
-            if checked:
-                selected.append(word[0])
+    if not st.session_state.answered:
 
-        submitted = st.form_submit_button(
-            "答え合わせ",
-            use_container_width=True
+        st.info(
+            "写真に関係するスペイン語を3つ選んでください。"
+            "日本語訳は答え合わせの後に表示されます。"
         )
 
-    if submitted:
+        with st.form(
+            key=f"answer_form_{st.session_state.round_id}"
+        ):
 
-        if len(selected) != 3:
+            selected = []
 
-            st.warning("3つ選択してください。")
+            for i, word in enumerate(question["choices"]):
 
-        else:
+                checked = st.checkbox(
+                    word[0],
+                    key=f"choice_{st.session_state.round_id}_{i}"
+                )
 
-            st.session_state.selected = selected
+                if checked:
+                    selected.append(word[0])
 
-            st.session_state.total += 1
-
-            st.session_state.is_correct = (
-                set(selected) == set(question["correct"])
+            submitted = st.form_submit_button(
+                "答え合わせ",
+                use_container_width=True
             )
 
-            if st.session_state.is_correct:
-                st.session_state.score += 1
+        if submitted:
 
-            st.session_state.answered = True
+            if len(selected) != 3:
+                st.warning("3つ選択してください。")
 
+            else:
+                st.session_state.selected = selected
+                st.session_state.total += 1
+
+                st.session_state.is_correct = (
+                    set(selected) == set(question["correct"])
+                )
+
+                if st.session_state.is_correct:
+                    st.session_state.score += 1
+
+                st.session_state.answered = True
+                st.rerun()
+
+    if st.session_state.answered:
+
+        st.divider()
+        st.header("📝 答え合わせ")
+
+        if st.session_state.is_correct:
+            st.success("¡Muy bien! 全問正解です！")
+        else:
+            st.warning("正解を確認しましょう。")
+
+        for word in question["choices"]:
+
+            spanish, japanese, category = word
+
+            if spanish in question["correct"]:
+                st.success(f"✓ {spanish} ＝ {japanese}")
+            else:
+                st.write(f"✕ {spanish} ＝ {japanese}")
+
+        st.divider()
+        st.header("🌍 関連する単語")
+
+        grouped = defaultdict(list)
+
+        for spanish, japanese, category in scene["words"]:
+            grouped[category].append((spanish, japanese))
+
+        columns = st.columns(2)
+
+        for index, (category, words) in enumerate(grouped.items()):
+
+            with columns[index % 2]:
+                with st.container(border=True):
+                    st.markdown(f"**📚 {category}**")
+
+                    for spanish, japanese in words:
+                        st.write(f"{spanish} — {japanese}")
+
+        st.divider()
+        st.header("✍️ 書き写して覚えよう")
+
+        st.write(
+            "スペイン語を書き写し、声に出して発音してみましょう。"
+        )
+
+        with st.expander("今回の単語を一覧で確認"):
+            for spanish, japanese, category in scene["words"]:
+                st.write(f"{spanish} — {japanese}")
+
+        if st.button(
+            "次の問題へ →",
+            type="primary",
+            use_container_width=True
+        ):
+            next_question()
             st.rerun()
 
 
 # ==========================================
-# 答え合わせ
+# モード② 単語を探究する
 # ==========================================
 
-if st.session_state.answered:
+elif mode == "🔎 単語を探究する":
 
-    st.divider()
-    st.header("📝 答え合わせ")
-
-    if st.session_state.is_correct:
-        st.success("¡Muy bien! 全問正解です！")
-    else:
-        st.warning("もう一度、正解を確認しましょう。")
-
-    for word in question["choices"]:
-
-        spanish, japanese, category = word
-
-        if spanish in question["correct"]:
-            st.success(f"✓ {spanish} ＝ {japanese}")
-        else:
-            st.write(f"✕ {spanish} ＝ {japanese}")
-
-    # ======================================
-    # 関連語のマインドマップ
-    # ======================================
-
-    st.divider()
-    st.header("🌍 関連する単語を広げよう")
+    st.header("🔎 単語探究モード")
 
     st.write(
-        f"「{scene['ja']}」に関連する単語を整理しました。"
-        "写真に写っていないものも覚えましょう。"
+        "気になるスペイン語を入力してください。"
+        "AIが関連語・例文・文法を整理します。"
     )
 
-    grouped = defaultdict(list)
+    level = st.selectbox(
+        "学習レベル",
+        ["A1", "A2", "B1"],
+        index=1
+    )
 
-    for spanish, japanese, category in scene["words"]:
-        grouped[category].append((spanish, japanese))
+    with st.form("explore_form"):
 
-    columns = st.columns(2)
+        search_word = st.text_input(
+            "調べたい単語",
+            placeholder="例：la calle、aprovechar、arreglado"
+        )
 
-    for index, (category, words) in enumerate(grouped.items()):
+        explore_button = st.form_submit_button(
+            "この単語を調べる",
+            use_container_width=True
+        )
 
-        with columns[index % 2]:
+    if explore_button:
+
+        clean_word = search_word.strip()
+
+        if not clean_word:
+            st.warning("単語を入力してください。")
+
+        elif len(clean_word) > 80:
+            st.warning("入力は80文字以内にしてください。")
+
+        elif st.session_state.ai_search_count >= 10:
+            st.warning(
+                "このセッションでの検索上限（10回）に達しました。"
+                "時間をおいて利用してください。"
+            )
+
+        elif time.time() - st.session_state.last_ai_search < 3:
+            st.warning("少し待ってから、もう一度お試しください。")
+
+        else:
+
+            st.session_state.last_ai_search = time.time()
+
+            with st.spinner(
+                "AIが関連語と例文を作成しています..."
+            ):
+
+                try:
+                    result = explore_word(clean_word, level)
+
+                    st.session_state.exploration_result = result
+                    st.session_state.exploration_word = clean_word
+                    st.session_state.ai_search_count += 1
+
+                except Exception as error:
+                    st.error(str(error))
+
+    # 検索結果表示
+
+    result = st.session_state.exploration_result
+
+    if result:
+
+        st.divider()
+
+        st.header(f"📖 {result.get('word', '')}")
+
+        st.subheader(result.get("meaning", ""))
+
+        st.write(
+            f"**品詞：** {result.get('part_of_speech', '')}"
+        )
+
+        st.info(result.get("grammar", ""))
+
+        st.divider()
+        st.header("🧠 関連マインドマップ")
+
+        st.markdown(
+            """
+            <div style="
+                background:#245C83;
+                color:white;
+                padding:18px;
+                border-radius:16px;
+                text-align:center;
+                font-size:24px;
+                font-weight:bold;
+            ">
+            中心の単語
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        st.markdown(
+            f"### {result.get('word', '')} — {result.get('meaning', '')}"
+        )
+
+        categories = result.get("categories", [])
+        columns = st.columns(2)
+
+        for index, category in enumerate(categories):
+
+            with columns[index % 2]:
+
+                with st.container(border=True):
+
+                    st.markdown(
+                        f"**🌱 {category.get('name', '関連語')}**"
+                    )
+
+                    for item in category.get("words", []):
+
+                        spanish = item.get("spanish", "")
+                        japanese = item.get("japanese", "")
+
+                        st.markdown(
+                            f"- **{spanish}** — {japanese}"
+                        )
+
+        st.divider()
+        st.header("💬 例文")
+
+        for index, example in enumerate(
+            result.get("examples", []), start=1
+        ):
 
             with st.container(border=True):
 
-                st.markdown(f"**📚 {category}**")
+                st.markdown(
+                    f"**例文 {index}**"
+                )
 
-                for spanish, japanese in words:
-                    st.markdown(
-                        f"- **{spanish}**　{japanese}"
-                    )
+                st.markdown(
+                    f"### {example.get('spanish', '')}"
+                )
 
-    # ======================================
-    # 書き写し学習
-    # ======================================
+                st.write(
+                    example.get("japanese", "")
+                )
 
-    st.divider()
-    st.header("✍️ 書き写して覚えよう")
+        st.divider()
+        st.header("📚 文法ポイント")
 
-    st.write(
-        "スペイン語をノートに書き写して、"
-        "声に出して発音してみましょう。"
-    )
+        for point in result.get("grammar_points", []):
+            st.markdown(f"- {point}")
 
-    st.markdown("""
-    1. スペイン語を見て書き写す
-    2. 日本語の意味を確認する
-    3. 日本語を見てスペイン語を思い出す
-    4. 声に出して発音する
-    """)
+        st.divider()
+        st.header("✍️ 覚え方のヒント")
 
-    with st.expander("今回の単語を一覧で確認"):
+        st.info(result.get("study_tip", ""))
 
-        for spanish, japanese, category in scene["words"]:
-            st.write(f"{spanish}　—　{japanese}")
-
-    st.divider()
-
-    if st.button(
-        "次の問題へ →",
-        type="primary",
-        use_container_width=True
-    ):
-        next_question()
-        st.rerun()
+        st.caption(
+            "AIが作成した学習用の説明です。"
+            "試験や重要な文章に使う場合は辞書などでも確認してください。"
+        )
 
 
 # ==========================================
