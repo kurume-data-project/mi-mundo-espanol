@@ -263,11 +263,18 @@ if st.session_state.current_question is None:
 st.markdown("<h1 class='main-title'>🇪🇸 MimapES</h1>", unsafe_allow_html=True)
 st.markdown("<p class='sub-title'>Mi mapa. Mi español.</p>", unsafe_allow_html=True)
 
+def return_to_home():
+    """マインドマップ画面を終了し、通常の学習画面へ戻す。"""
+    st.session_state["learning_mode"] = "📷 写真クイズで学ぶ"
+    st.session_state["mindmap_result"] = None
+    st.session_state["mindmap_illustration"] = None
+    st.session_state.pop("mindmap_photo", None)
+
 mode = st.radio("学習モード",
     ["📷 写真クイズで学ぶ",
      "🌱 写真からスペイン語マインドマップを作る",
      "💡 苦手単語の攻略"],
-    horizontal=True)
+    horizontal=True, key="learning_mode")
 st.divider()
 
 # モード① 写真クイズ（元の出題・採点・復習の流れを維持）
@@ -412,6 +419,20 @@ elif mode == "🌱 写真からスペイン語マインドマップを作る":
                                file_name="mimapes_illustrated_mindmap.png", mime="image/png",
                                use_container_width=True)
             st.caption("※画像生成AIは文字を誤って描く場合があります。正確な単語・訳は下の一覧またはCSVでも確認してください。")
+            st.button(
+                "↩️ 通常画面に戻る",
+                key="return_from_mindmap",
+                on_click=return_to_home,
+                use_container_width=True,
+            )
+
+        if not illustration:
+            st.button(
+                "↩️ 通常画面に戻る",
+                key="return_from_mindmap",
+                on_click=return_to_home,
+                use_container_width=True,
+            )
 
         rows = []
         categories = d.get("categories", [])
